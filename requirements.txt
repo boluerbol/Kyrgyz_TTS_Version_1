@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+onnxruntime
+numpy
+soundfile
+python-dotenv
+openai
+phonemizer
+unidecode

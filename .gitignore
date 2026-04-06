@@ -1,0 +1,37 @@
+# --- Secrets & Config ---
+.env
+.env.local
+.vscode/
+.idea/
+
+
+
+*.wav
+
+
+# --- AI Models (Root & App) ---
+# Ignores the heavy .onnx and .pth files
+models/*
+app/models/*
+app/models/*.onnx
+!models/.gitkeep
+!app/models/.gitkeep
+
+# --- Databases & Local Data ---
+# Ignores your chat history and temp DB files
+app/data/*.db
+app/data/*.db-shm
+app/data/*.db-wal
+
+# --- Python & Test "Trash" ---
+__pycache__/
+app/text/__pycache__/
+tests/__pycache__/
+.pytest_cache/
+*.py[cod]
+*$py.class
+
+# --- Environments ---
+venv/
+.venv/
+env/

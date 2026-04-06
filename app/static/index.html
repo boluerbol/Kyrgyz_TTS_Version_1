@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="ky">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Кыргыз AI — сүйлөм жана үн</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg0: #0a0c10;
+      --bg1: #12161e;
+      --panel: rgba(255, 255, 255, 0.04);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text: #e8eaef;
+      --muted: #8b93a7;
+      --accent: #f0b429;
+      --accent-dim: #c49a22;
+      --glow: rgba(240, 180, 41, 0.35);
+      --user-bg: linear-gradient(135deg, #1e2636 0%, #252d3d 100%);
+      --ai-bg: linear-gradient(135deg, #1a2218 0%, #1e2a1c 100%);
+      --danger: #e85d5d;
+      --ok: #4ade80;
+      --radius: 16px;
+      --font: "Outfit", system-ui, sans-serif;
+      --mono: "JetBrains Mono", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg0);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .noise {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      z-index: 0;
+    }
+
+    .mesh {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 100% 80% at 10% -20%, rgba(240, 180, 41, 0.12), transparent 50%),
+        radial-gradient(ellipse 70% 50% at 100% 0%, rgba(100, 140, 255, 0.08), transparent 45%),
+        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(232, 93, 93, 0.06), transparent 50%),
+        linear-gradient(180deg, var(--bg0) 0%, var(--bg1) 100%);
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 820px;
+      margin: 0 auto;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 1.25rem 1.25rem 1.5rem;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .pill-btn {
+      border: 1px solid var(--panel-border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--muted);
+      padding: 0.45rem 0.85rem;
+      border-radius: 999px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.78rem;
+      transition: transform 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .pill-btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(240, 180, 41, 0.28);
+      color: #c9d2e4;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(145deg, #f0b429 0%, #d4921a 100%);
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: #1a1408;
+      box-shadow: 0 0 32px var(--glow);
+    }
+
+    .brand h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .brand p {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      animation: pulse 2s ease infinite;
+    }
+
+    .status-dot.ok {
+      background: var(--ok);
+      box-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
+      animation: none;
+    }
+
+    .status-dot.warn {
+      background: var(--accent);
+      animation: pulse 2s ease infinite;
+    }
+
+    .model-toggle {
+      display: flex;
+      gap: 0.45rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 0.25rem;
+      border-radius: 999px;
+      align-items: center;
+    }
+
+    .model-btn {
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      background: transparent;
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.78rem;
+      transition: background 0.15s, color 0.15s, transform 0.15s;
+    }
+
+    .model-btn:hover:not(.active) {
+      transform: translateY(-1px);
+      color: #c9d2e4;
+    }
+
+    .model-btn.active {
+      background: rgba(240, 180, 41, 0.16);
+      color: #f7ddb1;
+      box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.22) inset;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-radius: var(--radius);
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      backdrop-filter: blur(12px);
+      overflow: hidden;
+    }
+
+    .chat-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .welcome {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .welcome strong {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .msg {
+      max-width: 92%;
+      padding: 1rem 1.15rem;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      animation: fadeUp 0.35s ease;
+      border: 1px solid transparent;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      background: var(--user-bg);
+      border-color: rgba(255, 255, 255, 0.06);
+    }
+
+    .msg.ai {
+      align-self: flex-start;
+      background: var(--ai-bg);
+      border-color: rgba(240, 180, 41, 0.15);
+    }
+
+    .msg-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      font-weight: 600;
+    }
+
+    .msg.ai .msg-label {
+      color: var(--accent-dim);
+    }
+
+    .audio-box {
+      margin-top: 1rem;
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .audio-box label {
+      display: block;
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    audio {
+      width: 100%;
+      height: 40px;
+      border-radius: 8px;
+    }
+
+    .err {
+      margin-top: 0.75rem;
+      padding: 0.65rem 0.85rem;
+      border-radius: 10px;
+      background: rgba(232, 93, 93, 0.12);
+      border: 1px solid rgba(232, 93, 93, 0.25);
+      color: #fca5a5;
+      font-size: 0.85rem;
+      font-family: var(--mono);
+    }
+
+    .composer {
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--panel-border);
+      display: flex;
+      gap: 0.65rem;
+      align-items: flex-end;
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    textarea {
+      flex: 1;
+      resize: none;
+      min-height: 52px;
+      max-height: 140px;
+      padding: 0.85rem 1rem;
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    textarea::placeholder {
+      color: var(--muted);
+      opacity: 0.8;
+    }
+
+    textarea:focus {
+      border-color: rgba(240, 180, 41, 0.4);
+      box-shadow: 0 0 0 3px rgba(240, 180, 41, 0.12);
+    }
+
+    button.send {
+      flex-shrink: 0;
+      min-width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(145deg, #f0b429 0%, #c49218 100%);
+      color: #1a1408;
+      display: grid;
+      place-items: center;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+      box-shadow: 0 4px 20px var(--glow);
+    }
+
+    button.send:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px var(--glow);
+    }
+
+    button.send:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .typing {
+      display: flex;
+      gap: 4px;
+      padding: 0.5rem 0;
+    }
+
+    .typing span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: bounce 1.2s ease infinite;
+    }
+
+    .typing span:nth-child(2) { animation-delay: 0.15s; }
+    .typing span:nth-child(3) { animation-delay: 0.3s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      40% { transform: translateY(-6px); opacity: 1; }
+    }
+
+    footer {
+      margin-top: 1rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="mesh"></div>
+  <div class="noise"></div>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <div class="logo">К</div>
+        <div>
+          <h1>Кыргыз AI</h1>
+          <p>Сунуш • Текст • Үн</p>
+        </div>
+      </div>
+      <div class="status" id="status" title="">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Текшерүү…</span>
+      </div>
+      <div class="model-toggle" aria-label="Үн модели">
+        <button type="button" class="model-btn" data-model="female">Аял үн</button>
+        <button type="button" class="model-btn" data-model="male">Эркек үн</button>
+      </div>
+      <button type="button" class="pill-btn" id="resetBtn" title="Чат эстутумун тазалоо">
+        Жаңы чат
+      </button>
+    </header>
+
+    <main>
+      <div class="chat-scroll" id="chat">
+        <div class="welcome" id="welcome">
+          <strong>Салам!</strong> Сурооңузду кыргызча жазып жөнөтүңүз — жооп текст жана
+          синтездик үн түрүндө кайтарылат.
+        </div>
+      </div>
+      <div class="composer">
+        <textarea
+          id="input"
+          rows="1"
+          placeholder="Мисалы: Бишкек боюнча кыскача маалымат бер…"
+        ></textarea>
+        <button type="button" class="send" id="send" aria-label="Жөнөтүү">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 2L11 13" />
+            <path d="M22 2l-7 20-4-9-9-4 20-7z" />
+          </svg>
+        </button>
+      </div>
+    </main>
+
+    <footer>
+      Llama 3.3 (Groq) + жергиликтүү TTS · <a href="/health" style="color: var(--accent-dim);">/health</a>
+      · <a href="/tts-ui" style="color: var(--accent-dim);">Текст -> Үн</a>
+      · <a href="/docs" style="color: var(--accent-dim);">API</a>
+    </footer>
+  </div>
+
+  <script>
+    const chat = document.getElementById("chat");
+    const welcome = document.getElementById("welcome");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("status");
+    const statusLabel = document.getElementById("statusText");
+    const resetBtn = document.getElementById("resetBtn");
+    const modelBtns = document.querySelectorAll(".model-btn");
+    const modelKey = "tts_gender";
+    let gender = localStorage.getItem(modelKey) || "female";
+    let ws = null;
+    let wsReady = false;
+    let activeAiBubble = null;
+    let activeAiText = "";
+
+    function setGender(g) {
+      gender = g;
+      localStorage.setItem(modelKey, gender);
+      modelBtns.forEach((b) => {
+        b.classList.toggle("active", b.dataset.model === gender);
+      });
+    }
+
+    modelBtns.forEach((b) => {
+      b.addEventListener("click", () => setGender(b.dataset.model));
+    });
+
+    setGender(gender);
+
+    function scrollChat() {
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function refreshHealth() {
+      try {
+        const r = await fetch("/health");
+        const j = await r.json();
+        const ok = j.ok === true;
+        statusDot.className = "status-dot" + (ok ? " ok" : " warn");
+        if (ok) {
+          statusLabel.textContent = "Даяр";
+          statusText.title = j.details?.join("\n") || "";
+        } else {
+          statusLabel.textContent = "Туура эмес түзүлүш";
+          statusText.title = (j.details || []).join("\n") || "Модель же API ачкычы жок";
+        }
+      } catch (e) {
+        statusDot.className = "status-dot";
+        statusLabel.textContent = "Тармак жок";
+        statusText.title = String(e);
+      }
+    }
+
+    function addMessage(role, text, opts = {}) {
+      if (welcome.parentNode) welcome.remove();
+      const div = document.createElement("div");
+      div.className = "msg " + role;
+      const label = role === "user" ? "Сиз" : "Жооп";
+      let html = `<div class="msg-label">${label}</div><div class="msg-body"></div>`;
+      div.innerHTML = html;
+      div.querySelector(".msg-body").textContent = text;
+      if (opts.error) {
+        const e = document.createElement("div");
+        e.className = "err";
+        e.textContent = opts.error;
+        div.appendChild(e);
+      }
+      if (opts.audioUrl) {
+        const box = document.createElement("div");
+        box.className = "audio-box";
+        box.innerHTML =
+          '<label>Аудио</label><audio controls preload="metadata" src="' +
+          opts.audioUrl +
+          "?" +
+          Date.now() +
+          '"></audio>';
+        div.appendChild(box);
+      }
+      chat.appendChild(div);
+      scrollChat();
+      return div;
+    }
+
+    function setLoading(on) {
+      sendBtn.disabled = on;
+      input.disabled = on;
+      const existing = document.getElementById("typingRow");
+      if (on) {
+        if (!existing) {
+          const row = document.createElement("div");
+          row.id = "typingRow";
+          row.className = "msg ai";
+          row.innerHTML =
+            '<div class="msg-label">Күтүү</div><div class="typing"><span></span><span></span><span></span></div>';
+          chat.appendChild(row);
+          scrollChat();
+        }
+      } else if (existing) {
+        existing.remove();
+      }
+    }
+
+    function wsUrl() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      return `${proto}://${location.host}/ws`;
+    }
+
+    function connectWs() {
+      try {
+        ws = new WebSocket(wsUrl());
+        wsReady = false;
+        ws.onopen = () => { wsReady = true; };
+        ws.onclose = () => { wsReady = false; ws = null; };
+        ws.onerror = () => { wsReady = false; };
+        ws.onmessage = (ev) => {
+          let data = null;
+          try { data = JSON.parse(ev.data); } catch { return; }
+          if (!data || !data.type) return;
+
+          if (data.type === "text_start") {
+            activeAiText = "";
+            activeAiBubble = addMessage("ai", "");
+            return;
+          }
+          if (data.type === "text_delta") {
+            activeAiText += (data.delta || "");
+            if (activeAiBubble) {
+              const body = activeAiBubble.querySelector(".msg-body");
+              if (body) body.textContent = activeAiText;
+              scrollChat();
+            }
+            return;
+          }
+          if (data.type === "audio_chunk") {
+            if (activeAiBubble && data.audio_url) {
+              const box = document.createElement("div");
+              box.className = "audio-box";
+              box.innerHTML =
+                '<label>Аудио</label><audio controls preload="metadata" src="' +
+                data.audio_url + "?" + Date.now() + '"></audio>';
+              activeAiBubble.appendChild(box);
+              scrollChat();
+            }
+            return;
+          }
+          if (data.type === "warn") {
+            if (activeAiBubble) {
+              const e = document.createElement("div");
+              e.className = "err";
+              e.textContent = data.message || "Warn";
+              activeAiBubble.appendChild(e);
+              scrollChat();
+            }
+            return;
+          }
+          if (data.type === "error") {
+            addMessage("ai", "Ката кетти.", { error: data.message || "Error" });
+            setLoading(false);
+            return;
+          }
+          if (data.type === "done") {
+            setLoading(false);
+            refreshHealth();
+            return;
+          }
+        };
+      } catch (e) {
+        wsReady = false;
+      }
+    }
+
+    connectWs();
+
+    resetBtn.addEventListener("click", async () => {
+      try {
+        if (ws && wsReady) {
+          ws.send(JSON.stringify({ type: "reset" }));
+        } else {
+          await fetch("/session/reset", { method: "POST" });
+        }
+        chat.innerHTML = "";
+        chat.appendChild(welcome);
+        await refreshHealth();
+      } catch (e) {}
+    });
+
+    async function submit() {
+      const msg = input.value.trim();
+      if (!msg) return;
+      input.value = "";
+      addMessage("user", msg);
+      setLoading(true);
+      try {
+        // Prefer WebSocket for streaming; fallback to HTTP if unavailable.
+        if (ws && wsReady) {
+          ws.send(JSON.stringify({ type: "user_message", message: msg, model: gender, stream_audio: true }));
+          return;
+        }
+        const res = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: msg, model: gender }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          addMessage("ai", data.detail || "Ката кетти.", {
+            error: typeof data.detail === "string" ? data.detail : JSON.stringify(data),
+          });
+          return;
+        }
+        const replyText = data.cleaned_text || data.kyrgyz_text || "";
+        addMessage("ai", replyText, {
+          audioUrl: data.audio_url || "",
+        });
+        await refreshHealth();
+      } catch (e) {
+        addMessage("ai", "Тармакка туташуу мүмкүн эмес.", { error: String(e) });
+      } finally {
+        setLoading(false);
+        input.focus();
+      }
+    }
+
+    sendBtn.addEventListener("click", submit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        submit();
+      }
+    });
+
+    input.addEventListener("input", () => {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 140) + "px";
+    });
+
+    refreshHealth();
+    setInterval(refreshHealth, 30000);
+  </script>
+</body>
+</html>
