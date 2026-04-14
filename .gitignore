@@ -3,31 +3,48 @@
 .env.local
 .vscode/
 .idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
-
-
+# --- Audio Files ---
+# Keeps the repo clean from recorded samples
 *.wav
+*.mp3
+*.flac
 
+# --- Built frontend (generated) ---
+# Ignores Vite/React build outputs
+frontend/dist/
+app/frontend_dist/*
+!app/frontend_dist/.gitkeep
 
-# --- AI Models (Root & App) ---
-# Ignores the heavy .onnx and .pth files
+# --- AI Models (Global) ---
+# Prevents accidental upload of heavy neural weights
+*.onnx
+*.pth
+*.bin
+*.model
 models/*
 app/models/*
-app/models/*.onnx
+frontend/public/models/**/*
 !models/.gitkeep
 !app/models/.gitkeep
 
 # --- Databases & Local Data ---
-# Ignores your chat history and temp DB files
 app/data/*.db
 app/data/*.db-shm
 app/data/*.db-wal
+*.sqlite3
 
 # --- Python & Test "Trash" ---
 __pycache__/
 app/text/__pycache__/
 tests/__pycache__/
 .pytest_cache/
+.tox/
+.coverage
 *.py[cod]
 *$py.class
 
@@ -35,3 +52,19 @@ tests/__pycache__/
 venv/
 .venv/
 env/
+bin/
+lib/
+develop-eggs/
+eggs/
+
+# --- JavaScript / Node ---
+node_modules/
+frontend/node_modules/
+.eslintcache
+.stylelintcache
+.npm/
+
+# --- OS Files ---
+Thumbs.db
+desktop.ini
+.DS_Store

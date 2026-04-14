@@ -1,0 +1,25 @@
+.env
+.env.*
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+
+# Local data
+app/data/
+app/static/*.wav
+
+# Big assets
+app/models/*.onnx
+models/
+
+# Frontend dev artifacts (do not send to Docker)
+frontend/node_modules/
+frontend/dist/
+
+# Git / IDE
+.git/
+.idea/
+.vscode/
+

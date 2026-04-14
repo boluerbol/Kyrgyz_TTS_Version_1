@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kyrgyz_ai
+      POSTGRES_USER: kyrgyz
+      POSTGRES_PASSWORD: kyrgyz_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql+psycopg2://kyrgyz:kyrgyz_password@db:5432/kyrgyz_ai
+      PYTHONPATH: /app
+      PYTHONUNBUFFERED: "1"
+      # Required
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      JWT_SECRET: ${JWT_SECRET:-dev-change-me}
+      # Gmail SMTP (use App Password)
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM:-${SMTP_USER}}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app/static:/app/app/static
+      - ./app/models:/app/app/models:ro
+
+volumes:
+  pgdata:
+

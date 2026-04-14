@@ -7,3 +7,12 @@ python-dotenv
 openai
 phonemizer
 unidecode
+sqlalchemy>=2.0
+psycopg2-binary
+python-jose[cryptography]
+pydantic[email]
+structlog
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+alembic
+websockets
