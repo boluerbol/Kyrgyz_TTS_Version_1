@@ -21,9 +21,10 @@ The project uses one source of frontend truth: the folder frontend inside this r
 - app/live_service.py - live websocket flow logic
 - app/text/ - text normalization helpers
 - app/models/ - ONNX TTS models (female.onnx, male.onnx)
-- app/frontend_dist/ - built frontend copied for backend serving
+- app/frontend_dist/ - frontend build output served by backend (built automatically in Docker)
 - frontend/ - React/Vite frontend source
 - scripts/build_frontend.ps1 - builds frontend and copies dist into app/frontend_dist
+- scripts/deploy_server.sh - one-command server deploy (git pull + docker compose up --build -d)
 - scripts/live_smoke.py - smoke test for live websocket endpoint
 - tests/ - unit tests for text pipeline and tts utils
 
@@ -153,9 +154,10 @@ Then open:
 From kyrgyz-ai-service:
 
 ```powershell
-.\scripts\build_frontend.ps1
 docker compose up --build
 ```
+
+Docker now builds frontend automatically inside the image (no manual frontend prebuild step needed for container deploys).
 
 DigitalOcean tip: for smaller images and faster deploys, install only `requirements.txt` unless you explicitly need local STT inference.
 
@@ -163,6 +165,49 @@ Services:
 
 - app: http://127.0.0.1:8000/
 - postgres: 5432
+
+### 7.1 Deploy on DigitalOcean/AWS VM (Ubuntu)
+
+1. Create VM and SSH in:
+
+```bash
+ssh root@YOUR_SERVER_IP
+```
+
+2. Install Docker + Compose plugin:
+
+```bash
+apt update
+apt install -y ca-certificates curl gnupg git
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+apt update
+apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+3. Clone project and set env file:
+
+```bash
+git clone https://github.com/<your-org>/<your-repo>.git
+cd <your-repo>/kyrgyz-ai-service
+cp .env.example .env
+# Edit .env and set real secrets before first run
+```
+
+4. Deploy with one command:
+
+```bash
+chmod +x scripts/deploy_server.sh
+./scripts/deploy_server.sh main
+```
+
+5. Verify public access:
+
+- http://YOUR_SERVER_IP:8000/
+- http://YOUR_SERVER_IP:8000/docs
+- http://YOUR_SERVER_IP:8000/health
 
 ---
 

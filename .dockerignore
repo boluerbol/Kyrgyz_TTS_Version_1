@@ -13,6 +13,8 @@ app/static/*.wav
 # Big assets
 app/models/*.onnx
 models/
+wav2vec2-datasetstt02/
+app/frontend_dist/
 
 # Frontend dev artifacts (do not send to Docker)
 frontend/node_modules/

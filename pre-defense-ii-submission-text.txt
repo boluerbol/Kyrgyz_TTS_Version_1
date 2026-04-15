@@ -1,0 +1,216 @@
+Submission package text (copy-paste)
+
+Pre-Defense II submission includes:
+
+1. Presentation PDF
+Title: Kyrgyz AI Service: Speech-to-Text, Chat, and Text-to-Speech for Kyrgyz Language
+
+2. Result Description PDF (1-2 pages)
+Title: Product Results and Validation Summary
+
+Product evidence links:
+- Repository: [add your GitHub repo link]
+- Live demo/deploy: [add your DigitalOcean URL or IP]
+- API docs endpoint: [add deploy URL]/docs
+- Demo video (optional, recommended): [add link]
+- Additional artifacts (optional): [screenshots folder, test logs, architecture diagram link]
+
+This submission demonstrates implemented functionality, deployment status, and technical validation with logs, screenshots, and endpoint checks.
+
+
+Presentation text (slide-by-slide)
+
+Slide 1. Title
+Kyrgyz AI Service
+Pre-Defense II
+
+Team: [your name(s)]
+Program: [your program]
+Date: [date]
+
+Speaker text:
+Today I present Kyrgyz AI Service, a full-stack AI product for Kyrgyz language interaction. Our system combines speech-to-text, chat generation, and text-to-speech with authentication, conversation storage, and Docker-based deployment.
+
+Slide 2. Problem
+- Kyrgyz-language AI tools are limited
+- Existing assistants often have weak Kyrgyz support
+- Users need one simple interface for voice and text communication
+
+Speaker text:
+The core problem is accessibility and quality for Kyrgyz language AI. Many global tools are not optimized for Kyrgyz speech and text workflows. We focused on a practical product that works end-to-end.
+
+Slide 3. Goal and Scope
+- Build a production-style Kyrgyz AI assistant
+- Support text chat and voice workflows
+- Provide secure auth and persistent conversation history
+- Deployable via Docker and cloud hosting
+
+Speaker text:
+Our goal is not only a prototype model, but a usable service with backend API, frontend UI, authentication, database integration, and deployment readiness.
+
+Slide 4. Product Overview
+Main features:
+- Login and protected user area
+- Chat with AI assistant
+- Text-to-Speech output with male/female voice models
+- Live voice mode via WebSocket
+- Health checks and API documentation
+
+Speaker text:
+The product allows users to sign in, ask questions, receive Kyrgyz responses, and listen to generated audio. It also supports streaming interactions and operational monitoring.
+
+Slide 5. System Architecture
+- Frontend: React + Vite
+- Backend: FastAPI
+- Database: PostgreSQL
+- Cache/Memory: Redis (for selected flows)
+- Inference components: ONNX runtime and API-based LLM
+- Transport: REST + WebSocket
+- Packaging: Docker Compose
+
+Speaker text:
+The architecture separates frontend and backend concerns while keeping deployment simple. Docker Compose runs the app and database consistently in local and cloud environments.
+
+Slide 6. Implementation Highlights
+- Auth module with JWT and email login flow
+- API modules for data and chat actions
+- STT model registry and warmup endpoints
+- TTS synthesis pipeline and static audio serving
+- Frontend state management and real-time UI updates
+
+Speaker text:
+We implemented modular services, including dedicated auth/data APIs, STT model handling, and TTS generation. This structure supports future scaling and easier maintenance.
+
+Slide 7. Deployment and DevOps
+- Docker image builds successfully
+- Containers for app and database start correctly
+- Health endpoint returns full ready status
+- Frontend build integrated into backend serving path
+
+Speaker text:
+We validated deployment by building and running containers, checking logs, verifying endpoint responses, and ensuring the latest frontend is correctly served from the backend.
+
+Slide 8. Evidence of Completion
+- Repository with source code and commit history
+- Running deployment link and API docs
+- Screenshots of login, chat, and voice mode
+- Health and service logs
+- Optional short demo recording
+
+Speaker text:
+To prove completion, we provide code, live access, execution evidence, and user-facing screenshots. This shows both technical and functional completion.
+
+Slide 9. Results and Validation
+- Functional validation:
+  - Login flow works
+  - Chat response flow works
+  - TTS file generation works
+  - WebSocket live channel works
+- Operational validation:
+  - App container healthy
+  - DB container healthy
+  - /health endpoint returns ok true
+
+Speaker text:
+We measured success by user-flow completion and runtime health. The system now operates as an integrated service, not isolated components.
+
+Slide 10. Challenges and Solutions
+- Stale frontend bundle served in container
+  - Solution: rebuild frontend and sync backend static bundle
+- Heavy dependencies increased build time
+  - Solution: split optional local-STT dependencies from core requirements
+- Secret handling in environment
+  - Solution: move to managed cloud secrets and rotate keys
+
+Speaker text:
+The most important practical challenge was deployment behavior and artifact freshness. We solved it with deterministic build and packaging steps.
+
+Slide 11. Roadmap
+- Nginx reverse proxy and TLS
+- CI/CD pipeline for automatic build/deploy
+- Better observability and error dashboards
+- Performance optimization and model quality improvements
+- User feedback loop and product analytics
+
+Speaker text:
+The next phase is production hardening and quality iteration based on user feedback and monitored usage.
+
+Slide 12. Conclusion
+- We delivered a working Kyrgyz AI product
+- Core functionality is implemented and deployable
+- Evidence and links prove technical completion
+- Project is ready for pilot usage and iterative improvement
+
+Speaker text:
+In summary, this is a complete end-to-end AI service focused on Kyrgyz language needs, with validated deployment and clear next steps toward production maturity.
+
+
+1-2 page Result Description text (copy-paste draft)
+
+Title: Kyrgyz AI Service - Product Results and Validation Summary
+
+Project summary
+Kyrgyz AI Service is an end-to-end AI assistant focused on Kyrgyz language interaction. The product integrates speech and text workflows, combining speech-to-text, chat response generation, and text-to-speech output in one web application. The system includes user authentication, conversation persistence, API endpoints, and Docker-based deployment to ensure reproducibility.
+
+What was built
+The final product consists of:
+- Frontend web application for authentication, chat, and voice interaction
+- FastAPI backend with REST and WebSocket interfaces
+- PostgreSQL integration for user and message data
+- TTS synthesis pipeline with ONNX voice models
+- STT model management support for live mode
+- Deployment-ready containerized environment with Docker Compose
+
+Key implemented capabilities
+1. User access and security
+- Login and protected app flow
+- JWT-based access control
+- Configurable environment-based secrets
+
+2. Kyrgyz chat and voice features
+- Text chat interface with assistant responses
+- TTS generation with selectable voice model
+- Live voice interaction through WebSocket events
+
+3. Operational reliability
+- Health endpoint for service diagnostics
+- API documentation endpoint
+- Structured startup and runtime logs
+
+Validation evidence
+- Containerized deployment builds and starts successfully
+- App and database services report healthy status
+- Health endpoint confirms model and external API readiness
+- Frontend is served through backend production bundle
+- User flows tested: login, chat request, audio output, live socket path
+
+Technical outcome
+The project reached a functional MVP-plus stage: all core modules are integrated and deployable. The architecture supports further scale and quality improvements without major rewrites. Dependency setup and artifact handling were refined for cloud deployment, reducing risk of inconsistent runtime behavior.
+
+Business and product value
+This work provides a practical AI tool for Kyrgyz-speaking users and demonstrates local-language technology applicability. The current system can be used as:
+- an educational demo product,
+- a foundation for customer support assistant scenarios,
+- a baseline for future startup traction experiments.
+
+Current limitations
+- Build time remains high due to model and inference dependencies
+- Production hardening is still needed for TLS, reverse proxy, and CI/CD
+- More quantitative benchmarking is needed for STT/TTS quality reporting
+
+Next steps
+- Finalize cloud deployment hardening and managed secrets
+- Add CI/CD and deployment automation
+- Introduce monitoring and error tracking
+- Run structured user testing and collect feedback metrics
+- Expand quality benchmarks with comparative experiments
+
+Proof links
+- Repository: [add link]
+- Deploy: [add link]
+- API docs: [add link]/docs
+- Demo video: [add link]
+- Screenshots/evidence folder: [add link]
+
+Conclusion
+Kyrgyz AI Service is a completed and verifiable technical product with real deployment evidence. It demonstrates successful integration of language AI, full-stack engineering, and deployment practices suitable for pre-defense evaluation.

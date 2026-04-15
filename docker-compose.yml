@@ -3,9 +3,9 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: kyrgyz_ai
-      POSTGRES_USER: kyrgyz
-      POSTGRES_PASSWORD: kyrgyz_password
+      POSTGRES_DB: ${POSTGRES_DB:-kyrgyz_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-kyrgyz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kyrgyz_password}
     ports:
       - "5432:5432"
     volumes:
@@ -17,7 +17,7 @@ services:
     depends_on:
       - db
     environment:
-      DATABASE_URL: postgresql+psycopg2://kyrgyz:kyrgyz_password@db:5432/kyrgyz_ai
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://kyrgyz:kyrgyz_password@db:5432/kyrgyz_ai}
       PYTHONPATH: /app
       PYTHONUNBUFFERED: "1"
       # Required
