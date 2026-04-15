@@ -10,13 +10,17 @@ env.remoteModelsBlocked = true;
 // Load vocabulary for manual token decoding
 let vocab = null;
 let idToToken = {};
+let currentVocabModel = null;
 
-async function loadVocabulary() {
-    if (vocab === null) {
+async function loadVocabulary(modelId) {
+    if (vocab === null || currentVocabModel !== modelId) {
         try {
-            // const response = await fetch('./models/pteacher/wav2vec2-ky-hiva/vocab.json');
-            const response = await fetch('/models/pteacher/wav2vec2-ky-hiva/vocab.json');
+            const response = await fetch(`/models/${modelId}/vocab.json`);
+            if (!response.ok) {
+                throw new Error(`vocab.json not found for model '${modelId}'`);
+            }
             vocab = await response.json();
+            currentVocabModel = modelId;
             
             // Create id to token mapping
             idToToken = {};
@@ -84,16 +88,21 @@ function postProcessText(text) {
 
 // Define model factories for direct wav2vec loading
 class Wav2VecFactory {
-    static model = null;
-    static quantized = null;
+    static modelId = null;
     static modelInstance = null;
     static processorInstance = null;
     static isLoaded = false;
     static isLoading = false;
 
-    static async getInstance(progress_callback = null) {
+    static async getInstance(modelId, progress_callback = null) {
+        const requestedModel = modelId || "pteacher/wav2vec2-ky-hiva";
+
+        if (this.modelId && this.modelId !== requestedModel) {
+            this.dispose();
+        }
+
         // If already loaded, return immediately
-        if (this.isLoaded && this.modelInstance && this.processorInstance) {
+        if (this.isLoaded && this.modelInstance && this.processorInstance && this.modelId === requestedModel) {
             return {
                 model: this.modelInstance,
                 processor: this.processorInstance
@@ -122,17 +131,18 @@ class Wav2VecFactory {
         
         try {
             // Load vocabulary first
-            await loadVocabulary();
+            await loadVocabulary(requestedModel);
             
             // Load model and processor directly from local path
-            this.modelInstance = await AutoModel.from_pretrained("pteacher/wav2vec2-ky-hiva", {
+            this.modelInstance = await AutoModel.from_pretrained(requestedModel, {
                 progress_callback
             });
             
-            this.processorInstance = await AutoProcessor.from_pretrained("pteacher/wav2vec2-ky-hiva", {
+            this.processorInstance = await AutoProcessor.from_pretrained(requestedModel, {
                 progress_callback
             });
 
+            this.modelId = requestedModel;
             this.isLoaded = true;
             this.isLoading = false;
 
@@ -165,6 +175,7 @@ class Wav2VecFactory {
         }
         this.isLoaded = false;
         this.isLoading = false;
+        this.modelId = null;
     }
 }
 
@@ -200,7 +211,7 @@ const transcribe = async (
 ) => {
     try {
         // Load the wav2vec model and processor directly
-        const { model: wav2vecModel, processor } = await Wav2VecFactory.getInstance((data) => {
+        const { model: wav2vecModel, processor } = await Wav2VecFactory.getInstance(model, (data) => {
             self.postMessage(data);
         });
 

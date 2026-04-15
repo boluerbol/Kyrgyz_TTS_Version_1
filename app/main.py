@@ -32,7 +32,12 @@ from app.memory import default_memory
 from app.text_processor import KyrgyzTextProcessor
 from app.text import cleaners as text_cleaners
 from app.tts_utils import intersperse
-from app.live_service import LiveSession
+from app.live_service import (
+    DEFAULT_LIVE_STT_MODEL_ID,
+    LiveSession,
+    list_stt_models,
+    warmup_stt_models,
+)
 
 load_dotenv()
 
@@ -72,6 +77,7 @@ FRONTEND_DIST_DIR_FALLBACK = os.path.abspath(os.path.join(SERVICE_ROOT, "fronten
 MODEL_DIR = os.path.join(current_dir, "models")
 FEMALE_MODEL_PATH = os.path.join(MODEL_DIR, "female.onnx")
 MALE_MODEL_PATH = os.path.join(MODEL_DIR, "male.onnx")
+BROWSER_MODEL_ROOT = os.path.join(SERVICE_ROOT, "frontend", "public", "models")
 
 os.makedirs(STATIC_DIR, exist_ok=True)
 
@@ -85,8 +91,8 @@ SESSION_COOKIE = "sid"
 MAX_HISTORY = 12
 SYSTEM_PROMPT = (
     "Ар дайым кыргыз тилинде жооп бер.\n"
-    "Колдонуучу сен кимсиң/эмнесиң/кайдан чыктың деп сураса, так ушул сүйлөм менен жооп бер:\n"
-    "\"Мен Ала-Тоо тарабынан иштелип чыккан Aibum мун.\"\n"
+    "Сен кыргыз маданиятына жана каада-салтын жакшы билген акылдуу жардамчысың.\n"
+    "Колдонуучунун суроолоруна толук жана түшүнүктүү жооп бер. Сен кыргыз граматикасын жакшы билесин.\n"
     "Андан кийин кыскача кантип жардам бере аларыңды айт.\n"
 )
 
@@ -184,6 +190,44 @@ async def health():
     }
 
 
+@app.get("/api/stt-models")
+async def stt_models():
+    browser_models = [
+        {
+            "id": "pteacher/wav2vec2-ky-hiva",
+            "label": "Browser wav2vec2-ky-hiva",
+            "supports_live": False,
+            "supports_browser": True,
+            "ready": os.path.isfile(
+                os.path.join(BROWSER_MODEL_ROOT, "pteacher", "wav2vec2-ky-hiva", "onnx", "model.onnx")
+            ),
+        },
+        {
+            "id": "datasetstt/wav2vec2-datasetstt",
+            "label": "Browser wav2vec2 datasetstt",
+            "supports_live": False,
+            "supports_browser": True,
+            "ready": os.path.isfile(
+                os.path.join(BROWSER_MODEL_ROOT, "datasetstt", "wav2vec2-datasetstt", "onnx", "model.onnx")
+            ),
+        },
+    ]
+    return {
+        "default": os.getenv("LIVE_STT_MODEL", DEFAULT_LIVE_STT_MODEL_ID),
+        "models": list_stt_models(include_status=True),
+        "browser_models": browser_models,
+    }
+
+
+class SttWarmupRequest(BaseModel):
+    model_id: Optional[str] = None
+
+
+@app.post("/api/stt-models/warmup")
+async def stt_models_warmup(body: SttWarmupRequest):
+    return warmup_stt_models(body.model_id)
+
+
 class ChatRequest(BaseModel):
     message: str = ""
     model: Literal["female", "male"] = "female"
@@ -275,6 +319,7 @@ async def ask_kyrgyz_ai(request: ChatRequest, http_request: Request, http_respon
         raise HTTPException(500, str(e)) from e
 
 
+@app.post("/api/tts")
 @app.post("/tts")
 async def tts_only(request: TTSRequest, user = Depends(get_current_user)):
     return _synthesize(request.text, gender=request.model)

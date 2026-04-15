@@ -69,6 +69,13 @@ cd kyrgyz-ai-service
 pip install -r requirements.txt
 ```
 
+Optional local STT (only if you want local HuggingFace STT on the server):
+
+```bash
+cd kyrgyz-ai-service
+pip install -r requirements.local-stt.txt
+```
+
 Frontend:
 
 ```bash
@@ -150,6 +157,8 @@ From kyrgyz-ai-service:
 docker compose up --build
 ```
 
+DigitalOcean tip: for smaller images and faster deploys, install only `requirements.txt` unless you explicitly need local STT inference.
+
 Services:
 
 - app: http://127.0.0.1:8000/
@@ -176,9 +185,11 @@ Request example:
 }
 ```
 
-#### POST /tts
+#### POST /api/tts
 
 Direct text to speech without LLM generation.
+
+Legacy compatibility: POST /tts is also accepted for older clients.
 
 Request example:
 

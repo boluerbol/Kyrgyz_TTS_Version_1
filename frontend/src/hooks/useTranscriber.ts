@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useWorker } from "./useWorker";
 import Constants from "../utils/Constants";
+import { useAppStore } from "../state/appStore";
 
 interface ProgressItem {
     file: string;
@@ -53,6 +54,9 @@ export interface Transcriber {
 }
 
 export function useTranscriber(): Transcriber {
+    const storeModel = useAppStore((s) => s.sttBrowserModel);
+    const setStoreModel = useAppStore((s) => s.setSttBrowserModel);
+
     const [transcript, setTranscript] = useState<TranscriberData | undefined>(
         undefined,
     );
@@ -134,7 +138,7 @@ export function useTranscriber(): Transcriber {
         }
     });
 
-    const [model, setModel] = useState<string>(Constants.DEFAULT_MODEL);
+    const [model, setModelState] = useState<string>(storeModel || Constants.DEFAULT_MODEL);
     const [subtask, setSubtask] = useState<string>(Constants.DEFAULT_SUBTASK);
     const [quantized, setQuantized] = useState<boolean>(
         Constants.DEFAULT_QUANTIZED,
@@ -196,7 +200,10 @@ export function useTranscriber(): Transcriber {
             start: postRequest,
             output: transcript,
             model,
-            setModel,
+            setModel: (nextModel: string) => {
+                setModelState(nextModel);
+                setStoreModel(nextModel);
+            },
             multilingual,
             setMultilingual,
             quantized,
@@ -218,6 +225,7 @@ export function useTranscriber(): Transcriber {
         quantized,
         subtask,
         language,
+        setStoreModel,
     ]);
 
     return transcriber;

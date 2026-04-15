@@ -26,6 +26,8 @@ type Persisted = {
   conversations: Conversation[];
   activeConversationId?: string;
   voice: VoiceModel;
+  sttBrowserModel?: string;
+  sttLiveModel?: string;
 };
 
 function uid() {
@@ -75,6 +77,12 @@ type AppState = {
 
   voice: VoiceModel;
   setVoice: (voice: VoiceModel) => void;
+
+  sttBrowserModel: string;
+  setSttBrowserModel: (model: string) => void;
+
+  sttLiveModel: string;
+  setSttLiveModel: (model: string) => void;
 
   health?: HealthResponse;
   setHealth: (health?: HealthResponse) => void;
@@ -130,6 +138,8 @@ type AppState = {
 export const useAppStore = create<AppState>((set, get) => {
   const persisted = loadPersisted();
   const seedVoice: VoiceModel = persisted?.voice || "female";
+  const seedSttBrowserModel = persisted?.sttBrowserModel || "pteacher/wav2vec2-ky-hiva";
+  const seedSttLiveModel = persisted?.sttLiveModel || "groq/whisper-large-v3-turbo";
   const seedConvs = persisted?.conversations?.length
     ? persisted.conversations
     : [defaultConversation()];
@@ -141,6 +151,8 @@ export const useAppStore = create<AppState>((set, get) => {
       conversations: s.conversations,
       activeConversationId: s.activeConversationId,
       voice: s.voice,
+      sttBrowserModel: s.sttBrowserModel,
+      sttLiveModel: s.sttLiveModel,
     });
   };
 
@@ -151,6 +163,18 @@ export const useAppStore = create<AppState>((set, get) => {
     voice: seedVoice,
     setVoice: (voice) => {
       set({ voice });
+      persist();
+    },
+
+    sttBrowserModel: seedSttBrowserModel,
+    setSttBrowserModel: (sttBrowserModel) => {
+      set({ sttBrowserModel });
+      persist();
+    },
+
+    sttLiveModel: seedSttLiveModel,
+    setSttLiveModel: (sttLiveModel) => {
+      set({ sttLiveModel });
       persist();
     },
 

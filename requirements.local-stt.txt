@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Optional local HuggingFace STT runtime.
+# Keep this out of default production deploys to reduce image size and build time.
+transformers>=4.41,<5.0
+torch>=2.2,<3.0
+onnxscript>=0.1,<1.0

@@ -13,9 +13,10 @@ export default function AppRoutes({ sharedProps }: any) {
   const setAuth = useAppStore((s) => s.setAuth);
   const syncFromServer = useAppStore((s) => s.syncFromServer);
 
-  const handleLogin = (token: string, email: string) => {
+  const handleLogin = (token: string, email: string, username?: string) => {
     localStorage.setItem('ky_token', token);
     localStorage.setItem('ky_authed_email', email);
+    if (username) localStorage.setItem('ky_authed_name', username);
     setAuth(token);
     syncFromServer().catch(() => {});
   };

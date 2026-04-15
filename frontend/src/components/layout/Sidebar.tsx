@@ -9,12 +9,13 @@ interface SidebarProps {
   setOpen: (open: boolean) => void;
   activeTab: string;
   authedName?: string;
+  authedEmail?: string;
   logout?: () => void;
   // Add setTab to your interface so TypeScript knows it exists
   setTab: (tab: string) => void; 
 }
 
-export function Sidebar({ open, setOpen,authedName,logout, activeTab, setTab }: SidebarProps) {
+export function Sidebar({ open, setOpen, authedName, authedEmail, logout, activeTab, setTab }: SidebarProps) {
   const navigate = useNavigate();
   const conversations = useAppStore((s) => s.conversations);
   const activeId = useAppStore((s) => s.activeConversationId);
@@ -43,7 +44,7 @@ export function Sidebar({ open, setOpen,authedName,logout, activeTab, setTab }: 
           <div className="flex-1 min-w-0">
             <div className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Кош келиңиз</div>
             <div className="text-sm font-semibold truncate text-white">
-              Салам, {authedName}!
+              Салам, {authedName || authedEmail?.split("@")[0] || "дос"}!
             </div>
           </div>
         </div>

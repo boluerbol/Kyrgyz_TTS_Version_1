@@ -10,15 +10,12 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 # --- Configuration ---
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-change-me")
 JWT_ALG = "HS256"
 JWT_EXPIRES_MIN = int(os.getenv("JWT_EXPIRES_MIN", "43200"))  # 30 days
 
-SMTP_HOST = os.getenv("SMTP_HOST", "")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
+
+def _jwt_secret() -> str:
+    return os.getenv("JWT_SECRET", "dev-change-me")
 
 # Use bcrypt for passwords. The deprecated="auto" handles older hashes if you migrate.
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -49,7 +46,7 @@ def hash_code(code: str) -> str:
     """
     Hashes short-lived OTP codes using a pepper (JWT_SECRET).
     """
-    payload = f"{JWT_SECRET}:{code}".encode("utf-8")
+    payload = f"{_jwt_secret()}:{code}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 def verify_code(code: str, code_hash: str) -> bool:
@@ -70,36 +67,40 @@ def create_access_token(*, user_id: int, email: str) -> str:
         "iat": int(now.timestamp()),
         "exp": int((now + dt.timedelta(minutes=JWT_EXPIRES_MIN)).timestamp()),
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+    return jwt.encode(payload, _jwt_secret(), algorithm=JWT_ALG)
 
 def decode_token(token: str) -> Optional[dict]:
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        return jwt.decode(token, _jwt_secret(), algorithms=[JWT_ALG])
     except JWTError:
         return None
 
 # --- Email Communications ---
 
 def send_login_code_email(*, to_email: str, code: str) -> None:
-    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD and SMTP_FROM):
-        # In development, you might want to just print the code instead of raising an error
-        print(f"DEBUG: Login code for {to_email} is {code}")
-        return
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_password_raw = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user)
 
-    smtp_password = SMTP_PASSWORD.replace(" ", "")
+    if not (smtp_host and smtp_user and smtp_password_raw and smtp_from):
+        raise RuntimeError("SMTP конфигурациясы жок. SMTP_* маанилерин .env файлына толтуруңуз.")
+
+    smtp_password = smtp_password_raw.replace(" ", "")
 
     msg = EmailMessage()
     msg["Subject"] = "Kyrgyz AI Login Code"
-    msg["From"] = SMTP_FROM
+    msg["From"] = smtp_from
     msg["To"] = to_email
     msg.set_content(
         f"Салам!\n\nКирүү кодуңуз: {code}\n\nБул код 10 мүнөт ичинде жарактуу.\n"
     )
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
             server.starttls()
-            server.login(SMTP_USER, smtp_password)
+            server.login(smtp_user, smtp_password)
             server.send_message(msg)
     except Exception as e:
         # Production logging should capture this

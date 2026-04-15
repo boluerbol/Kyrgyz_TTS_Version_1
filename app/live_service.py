@@ -1,10 +1,11 @@
 import asyncio
+import importlib.util
 import io
 import json
 import os
 import re
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import onnxruntime as ort
@@ -18,6 +19,188 @@ from app.tts_utils import intersperse
 
 
 SENTENCE_RE = re.compile(r"(.+?[.!?\n]+)(\s|$)", re.DOTALL)
+
+
+DEFAULT_LIVE_STT_MODEL_ID = "groq/whisper-large-v3-turbo"
+
+STT_MODEL_REGISTRY: dict[str, dict[str, Any]] = {
+    "groq/whisper-large-v3-turbo": {
+        "id": "groq/whisper-large-v3-turbo",
+        "label": "Groq Whisper Large V3 Turbo",
+        "provider": "groq",
+        "provider_model": "whisper-large-v3-turbo",
+        "supports_live": True,
+        "supports_browser": False,
+    },
+    "groq/whisper-large-v3": {
+        "id": "groq/whisper-large-v3",
+        "label": "Groq Whisper Large V3",
+        "provider": "groq",
+        "provider_model": "whisper-large-v3",
+        "supports_live": True,
+        "supports_browser": False,
+    },
+    "local/wav2vec2-datasetstt": {
+        "id": "local/wav2vec2-datasetstt",
+        "label": "Local wav2vec2 datasetstt",
+        "provider": "local_hf",
+        "provider_model": os.getenv(
+            "LIVE_LOCAL_STT_PATH",
+            os.path.abspath(
+                os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "wav2vec2-datasetstt02",
+                    "wav2vec2-datasetstt",
+                )
+            ),
+        ),
+        "supports_live": True,
+        "supports_browser": False,
+    },
+}
+
+_LOCAL_ASR_PIPELINES: dict[str, Any] = {}
+
+
+def _local_runtime_status() -> tuple[bool, str]:
+    missing: list[str] = []
+    if importlib.util.find_spec("transformers") is None:
+        missing.append("transformers")
+    if importlib.util.find_spec("torch") is None:
+        missing.append("torch")
+    if missing:
+        return False, f"Missing Python packages: {', '.join(missing)}"
+    return True, "ok"
+
+
+def get_stt_model_status(model_id: str) -> dict[str, Any]:
+    normalized = _normalize_stt_model_id(model_id)
+    cfg = STT_MODEL_REGISTRY[normalized]
+    provider = str(cfg.get("provider", ""))
+    provider_model = str(cfg.get("provider_model", ""))
+
+    ready = True
+    warmed = False
+    detail = "ok"
+
+    if provider == "groq":
+        if not os.getenv("GROQ_API_KEY"):
+            ready = False
+            detail = "GROQ_API_KEY is not configured"
+    elif provider == "local_hf":
+        runtime_ok, runtime_detail = _local_runtime_status()
+        if not runtime_ok:
+            ready = False
+            detail = runtime_detail
+        elif not os.path.isdir(provider_model):
+            ready = False
+            detail = f"Model path not found: {provider_model}"
+        else:
+            warmed = provider_model in _LOCAL_ASR_PIPELINES
+            detail = "warmed" if warmed else "cold"
+
+    return {
+        "id": cfg["id"],
+        "label": cfg["label"],
+        "provider": provider,
+        "supports_live": bool(cfg.get("supports_live", False)),
+        "supports_browser": bool(cfg.get("supports_browser", False)),
+        "ready": ready,
+        "warmed": warmed,
+        "detail": detail,
+    }
+
+
+def list_stt_models(*, include_status: bool = False) -> list[dict[str, Any]]:
+    if include_status:
+        return [get_stt_model_status(key) for key in STT_MODEL_REGISTRY.keys()]
+    return [
+        {
+            "id": item["id"],
+            "label": item["label"],
+            "provider": item["provider"],
+            "supports_live": bool(item.get("supports_live", False)),
+            "supports_browser": bool(item.get("supports_browser", False)),
+        }
+        for item in STT_MODEL_REGISTRY.values()
+    ]
+
+
+def _normalize_stt_model_id(model_id: Optional[str]) -> str:
+    requested = (model_id or "").strip()
+    if requested in STT_MODEL_REGISTRY:
+        return requested
+
+    # Backward compatibility: if plain provider model name is provided,
+    # map it to a known registry key.
+    for key, cfg in STT_MODEL_REGISTRY.items():
+        if requested and cfg.get("provider_model") == requested:
+            return key
+
+    env_value = (os.getenv("LIVE_STT_MODEL", "") or "").strip()
+    if env_value in STT_MODEL_REGISTRY:
+        return env_value
+    for key, cfg in STT_MODEL_REGISTRY.items():
+        if env_value and cfg.get("provider_model") == env_value:
+            return key
+
+    return DEFAULT_LIVE_STT_MODEL_ID
+
+
+def _get_local_asr_pipeline(model_path: str):
+    cached = _LOCAL_ASR_PIPELINES.get(model_path)
+    if cached is not None:
+        return cached
+
+    try:
+        from transformers import pipeline
+    except Exception as exc:  # pragma: no cover - optional dependency path
+        raise RuntimeError(
+            "Local STT requires 'transformers' and 'torch' to be installed."
+        ) from exc
+
+    if not os.path.isdir(model_path):
+        raise RuntimeError(f"Local STT model path not found: {model_path}")
+
+    asr = pipeline(
+        task="automatic-speech-recognition",
+        model=model_path,
+        tokenizer=model_path,
+        feature_extractor=model_path,
+        device=-1,
+    )
+    _LOCAL_ASR_PIPELINES[model_path] = asr
+    return asr
+
+
+def warmup_stt_models(model_id: Optional[str] = None) -> dict[str, Any]:
+    targets: list[str]
+    if model_id:
+        targets = [_normalize_stt_model_id(model_id)]
+    else:
+        targets = list(STT_MODEL_REGISTRY.keys())
+
+    warmed: list[dict[str, Any]] = []
+    for target in targets:
+        cfg = STT_MODEL_REGISTRY[target]
+        provider = str(cfg.get("provider", ""))
+        provider_model = str(cfg.get("provider_model", ""))
+
+        result = get_stt_model_status(target)
+        if provider == "local_hf" and result.get("ready"):
+            try:
+                _get_local_asr_pipeline(provider_model)
+                result = get_stt_model_status(target)
+            except Exception as exc:
+                result = {
+                    **result,
+                    "ready": False,
+                    "warmed": False,
+                    "detail": str(exc),
+                }
+        warmed.append(result)
+
+    return {"ok": True, "models": warmed}
 
 
 class LiveSession:
@@ -41,6 +224,7 @@ class LiveSession:
         self.logger = logger
 
         self.voice_model = "female"
+        self.stt_model_id = _normalize_stt_model_id(None)
         self.sample_rate = 16000
         self.vad_threshold = float(os.getenv("LIVE_VAD_THRESHOLD", "0.015"))
         self.silence_ms = int(os.getenv("LIVE_SILENCE_MS", "360"))
@@ -63,6 +247,7 @@ class LiveSession:
                 "sample_rate": self.sample_rate,
                 "pcm_format": "s16le",
                 "vad_threshold": self.vad_threshold,
+                "default_stt_model": self.stt_model_id,
             }
         )
 
@@ -88,7 +273,21 @@ class LiveSession:
 
         if msg_type == "start":
             self.voice_model = payload.get("model", self.voice_model)
-            await self.websocket.send_json({"type": "listening", "model": self.voice_model})
+            requested_stt = payload.get("stt_model") or payload.get("sttModel")
+            selected_stt = _normalize_stt_model_id(requested_stt)
+            if requested_stt and selected_stt != requested_stt:
+                await self.websocket.send_json(
+                    {
+                        "type": "warn",
+                        "code": "stt_model_fallback",
+                        "requested": requested_stt,
+                        "selected": selected_stt,
+                    }
+                )
+            self.stt_model_id = selected_stt
+            await self.websocket.send_json(
+                {"type": "listening", "model": self.voice_model, "stt_model": self.stt_model_id}
+            )
             return
 
         if msg_type == "stop":
@@ -190,8 +389,36 @@ class LiveSession:
 
     async def _transcribe_pcm(self, pcm: bytes) -> str:
         wav_bytes = self._pcm_to_wav_bytes(pcm, self.sample_rate)
-        stt_model = os.getenv("LIVE_STT_MODEL", "whisper-large-v3-turbo")
+        stt_config = STT_MODEL_REGISTRY.get(
+            self.stt_model_id,
+            STT_MODEL_REGISTRY[DEFAULT_LIVE_STT_MODEL_ID],
+        )
+        provider = stt_config.get("provider")
+        provider_model = stt_config.get("provider_model")
         stt_language = os.getenv("LIVE_STT_LANGUAGE", "").strip()
+
+        if provider == "local_hf":
+            try:
+                return await asyncio.to_thread(self._transcribe_local_hf, pcm, str(provider_model))
+            except Exception as exc:
+                fallback_cfg = STT_MODEL_REGISTRY[DEFAULT_LIVE_STT_MODEL_ID]
+                self.logger.warning(
+                    "Local STT failed; falling back to Groq",
+                    selected_model=self.stt_model_id,
+                    fallback_model=DEFAULT_LIVE_STT_MODEL_ID,
+                    reason=str(exc),
+                )
+                return await self._transcribe_groq_wav(
+                    wav_bytes,
+                    str(fallback_cfg.get("provider_model", "whisper-large-v3-turbo")),
+                    stt_language,
+                )
+
+        return await self._transcribe_groq_wav(wav_bytes, str(provider_model), stt_language)
+
+    async def _transcribe_groq_wav(self, wav_bytes: bytes, provider_model: str, stt_language: str) -> str:
+        if not self.openai_client:
+            raise RuntimeError("Groq client is not configured")
 
         def _call_stt() -> str:
             def _as_text(resp_obj) -> str:
@@ -204,7 +431,7 @@ class LiveSession:
                 buf = io.BytesIO(wav_bytes)
                 buf.name = "live_input.wav"
                 kwargs = {
-                    "model": stt_model,
+                    "model": provider_model,
                     "file": buf,
                     "response_format": "text",
                     "timeout": self.stt_timeout_sec,
@@ -223,7 +450,7 @@ class LiveSession:
             buf = io.BytesIO(wav_bytes)
             buf.name = "live_input.wav"
             resp = self.openai_client.audio.transcriptions.create(
-                model=stt_model,
+                model=provider_model,
                 file=buf,
                 response_format="text",
                 timeout=self.stt_timeout_sec,
@@ -251,6 +478,17 @@ class LiveSession:
         if last_exc:
             raise last_exc
         return ""
+
+    def _transcribe_local_hf(self, pcm: bytes, model_path: str) -> str:
+        asr = _get_local_asr_pipeline(model_path)
+        arr = np.frombuffer(pcm, dtype=np.int16)
+        if arr.size == 0:
+            return ""
+        audio = arr.astype(np.float32) / 32768.0
+        result = asr({"raw": audio, "sampling_rate": self.sample_rate})
+        if isinstance(result, dict):
+            return str(result.get("text", ""))
+        return str(result)
 
     async def _stream_llm_and_tts(self, turn_id: int, user_text: str) -> None:
         messages = [

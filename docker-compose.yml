@@ -29,11 +29,14 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM:-${SMTP_USER}}
+      LIVE_STT_MODEL: ${LIVE_STT_MODEL:-groq/whisper-large-v3-turbo}
+      LIVE_LOCAL_STT_PATH: ${LIVE_LOCAL_STT_PATH:-/app/wav2vec2-datasetstt02/wav2vec2-datasetstt}
     ports:
       - "8000:8000"
     volumes:
       - ./app/static:/app/app/static
       - ./app/models:/app/app/models:ro
+      - ./wav2vec2-datasetstt02:/app/wav2vec2-datasetstt02:ro
 
 volumes:
   pgdata:

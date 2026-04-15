@@ -1,6 +1,8 @@
 # --- Secrets & Config ---
 .env
 .env.local
+.env.*
+!.env.example
 .vscode/
 .idea/
 *.suo
@@ -24,11 +26,15 @@ app/frontend_dist/*
 # Prevents accidental upload of heavy neural weights
 *.onnx
 *.pth
+*.pt
+*.ckpt
+*.safetensors
 *.bin
 *.model
 models/*
 app/models/*
 frontend/public/models/**/*
+wav2vec2-datasetstt02/
 !models/.gitkeep
 !app/models/.gitkeep
 
@@ -43,8 +49,12 @@ __pycache__/
 app/text/__pycache__/
 tests/__pycache__/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .tox/
 .coverage
+.coverage.*
+htmlcov/
 *.py[cod]
 *$py.class
 
@@ -63,6 +73,7 @@ frontend/node_modules/
 .eslintcache
 .stylelintcache
 .npm/
+.pnpm-store/
 
 # --- OS Files ---
 Thumbs.db

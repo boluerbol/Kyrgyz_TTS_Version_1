@@ -8,6 +8,7 @@ import Constants from "../utils/Constants";
 import { Transcriber } from "../hooks/useTranscriber";
 import Progress from "./Progress";
 import AudioRecorder from "./AudioRecorder";
+import { apiSttModels, type SttModelInfo } from "../api/kyrgyzService";
 
 function titleCase(str: string) {
     str = str.toLowerCase();
@@ -367,17 +368,44 @@ function SettingsModal(props: {
     transcriber: Transcriber;
 }) {
     const names = Object.values(LANGUAGES).map(titleCase);
+    const [browserModels, setBrowserModels] = useState<SttModelInfo[]>([
+        {
+            id: "pteacher/wav2vec2-ky-hiva",
+            label: "Browser wav2vec2-ky-hiva",
+            supports_live: false,
+            supports_browser: true,
+            ready: true,
+        },
+    ]);
+
+    useEffect(() => {
+        if (!props.show) return;
+        let cancelled = false;
+        apiSttModels()
+            .then((payload) => {
+                if (cancelled) return;
+                const readyBrowserModels = (payload.browser_models || []).filter(
+                    (m) => m.supports_browser && m.ready !== false,
+                );
+                if (readyBrowserModels.length) {
+                    setBrowserModels(readyBrowserModels);
+                    if (!readyBrowserModels.find((m) => m.id === props.transcriber.model)) {
+                        props.transcriber.setModel(readyBrowserModels[0].id);
+                    }
+                }
+            })
+            .catch(() => {
+                if (cancelled) return;
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [props.show, props.transcriber.model, props.transcriber.setModel]);
 
     const models = {
-        // Original checkpoints
         'pteacher/wav2vec2-ky-hiva': [41, 152],
-        'Xenova/whisper-base': [77, 291],
-        'Xenova/whisper-small': [249],
-        'Xenova/whisper-medium': [776],
-
-        // Distil Whisper (English-only)
-        'distil-whisper/distil-medium.en': [402],
-        'distil-whisper/distil-large-v2': [767],
+        'datasetstt/wav2vec2-datasetstt': [1220, 1220],
     };
     return (
         <Modal
@@ -386,14 +414,18 @@ function SettingsModal(props: {
             content={
                 <>
                     <label>Колдонула турган модельди тандоо.</label>
+                    <div className='text-xs text-slate-500 mb-1'>
+                        Браузер STT үчүн ONNX колдоого алынган моделдер гана көрсөтүлөт.
+                    </div>
                     <select
                         className='mt-1 mb-1 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500'
-                        defaultValue={props.transcriber.model}
+                        value={props.transcriber.model}
                         onChange={(e) => {
                             props.transcriber.setModel(e.target.value);
                         }}
                     >
-                        {Object.keys(models)
+                        {browserModels
+                            .map((m) => m.id)
                             .filter(
                                 (key) =>
                                     props.transcriber.quantized ||
@@ -407,7 +439,7 @@ function SettingsModal(props: {
                             )
                             .map((key) => (
                                 <option key={key} value={key}>{`${key}${
-                                    (props.transcriber.multilingual || key.startsWith('distil-whisper/')) ? "" : ".en"
+                                    ""
                                 } (${
                                     // @ts-ignore
                                     models[key][

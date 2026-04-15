@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { requestLoginCode, verifyLoginCode, register, login } from "../../api/auth";
+import { requestLoginCode, verifyLoginCode, verifyRegistrationCode, register, login } from "../../api/auth";
 
-export default function LoginPanel(props: { onAuthed: (token: string, email: string) => void }) {
+export default function LoginPanel(props: { onAuthed: (token: string, email: string, username?: string) => void }) {
   const [tab, setTab] = useState<"password" | "code">("password");
   const [mode, setMode] = useState<"login" | "register">("login");
   
@@ -14,8 +14,8 @@ export default function LoginPanel(props: { onAuthed: (token: string, email: str
   const [identifier, setIdentifier] = useState("");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [name, setName] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
+  const [verifyPurpose, setVerifyPurpose] = useState<"register" | "login">("login");
   
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | undefined>();
@@ -29,13 +29,13 @@ export default function LoginPanel(props: { onAuthed: (token: string, email: str
           className={`flex-1 px-3 py-1.5 rounded-lg font-semibold text-sm transition-all ${tab === "password" ? "bg-white dark:bg-white/10 shadow-sm" : "text-slate-500"}`}
           onClick={() => { setTab("password"); setErr(undefined); setNote(undefined); }}
         >
-          Сөз айкашы
+          Сырсөз
         </button>
         <button 
           className={`flex-1 px-3 py-1.5 rounded-lg font-semibold text-sm transition-all ${tab === "code" ? "bg-white dark:bg-white/10 shadow-sm" : "text-slate-500"}`}
           onClick={() => { setTab("code"); setErr(undefined); setNote(undefined); }}
         >
-          Email Код
+          Email коду
         </button>
       </div>
 
@@ -62,7 +62,7 @@ export default function LoginPanel(props: { onAuthed: (token: string, email: str
             <input
               type="password"
               className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-white/5 border-none focus:ring-2 focus:ring-indigo-500 outline-none"
-              placeholder="Сөз айкашы (Password)"
+              placeholder="Сырсөз (Password)"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -75,15 +75,15 @@ export default function LoginPanel(props: { onAuthed: (token: string, email: str
                 try {
                   if (mode === "login") {
                     const r = await login(identifier, password);
-                    props.onAuthed(r.access_token, r.user.email);
+                    props.onAuthed(r.access_token, r.user.email, r.user.username || r.user.name || undefined);
                   } else {
-                    // 1. Call Register
                     await register(username, emailReg, password);
-                    // 2. Success! Now move to verification step
-                    setNote("Каттоо коду почтаңызга жөнөтүлдү. Аны бул жерге жазыңыз.");
-                    setEmail(emailReg); // Transfer email to the verification state
-                    setTab("code");      // Switch to the Code tab
-                    setStep("code");     // Set step to enter code
+                    setVerifyPurpose("register");
+                    setNote("Каттоо коду email дарегиңизге жөнөтүлдү. Кодду ырастап, андан кийин киресиз.");
+                    setEmail(emailReg.trim());
+                    setCode("");
+                    setTab("code");
+                    setStep("code");
                   }
                 } catch (e: any) {
                   setErr(e.message);
@@ -117,8 +117,9 @@ export default function LoginPanel(props: { onAuthed: (token: string, email: str
                   setBusy(true); setErr(undefined);
                   try {
                     await requestLoginCode(email.trim());
+                    setVerifyPurpose("login");
                     setStep("code");
-                    setNote("Код жөнөтүлдү.");
+                    setNote("Код жөнөтүлдү. Кодду текшерип, андан кийин сырсөз менен кириңиз.");
                   } catch (e: any) { setErr(e.message); }
                   finally { setBusy(false); }
                 }}
@@ -141,9 +142,19 @@ export default function LoginPanel(props: { onAuthed: (token: string, email: str
                 onClick={async () => {
                   setBusy(true); setErr(undefined);
                   try {
-                    const r = await verifyLoginCode(email.trim(), code.trim());
-                    localStorage.setItem("ky_token", r.access_token);
-                    props.onAuthed(r.access_token, r.user.email);
+                    if (verifyPurpose === "register") {
+                      await verifyRegistrationCode(email.trim(), code.trim());
+                      setNote("Каттоо ырасталды. Эми сырсөз менен кириңиз.");
+                    } else {
+                      await verifyLoginCode(email.trim(), code.trim());
+                      setNote("Код ырасталды. Эми сырсөз менен кириңиз.");
+                    }
+                    setMode("login");
+                    setIdentifier(email.trim());
+                    setPassword("");
+                    setCode("");
+                    setTab("password");
+                    setStep("email");
                   } catch (e: any) { setErr(e.message); }
                   finally { setBusy(false); }
                 }}

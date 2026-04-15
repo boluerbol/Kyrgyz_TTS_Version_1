@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { apiSttModels, apiWarmupSttModel, type SttModelInfo } from "../../api/kyrgyzService";
 import { useAppStore } from "../../state/appStore";
 
 type LiveServerEvent =
-  | { type: "live_ready"; sample_rate: number }
-  | { type: "listening"; model: "female" | "male" }
+  | { type: "live_ready"; sample_rate: number; default_stt_model?: string }
+  | { type: "listening"; model: "female" | "male"; stt_model?: string }
   | { type: "speech_start" }
   | { type: "turn_start"; turn_id: number; trigger: string }
   | { type: "transcript"; turn_id: number; text: string }
@@ -13,6 +14,7 @@ type LiveServerEvent =
   | { type: "turn_done"; turn_id: number }
   | { type: "interrupted"; reason: string }
   | { type: "no_speech"; turn_id: number }
+  | { type: "warn"; code?: string; requested?: string; selected?: string }
   | { type: "error"; message: string };
 
 function downsampleFloat32(input: Float32Array, inRate: number, outRate: number): Float32Array {
@@ -53,6 +55,8 @@ type PlaybackChunk = {
 export default function LivePage({ setTab }: { setTab: (tab: string) => void }) {
   const token = useAppStore((s) => s.token);
   const voice = useAppStore((s) => s.voice);
+  const sttLiveModel = useAppStore((s) => s.sttLiveModel);
+  const setSttLiveModel = useAppStore((s) => s.setSttLiveModel);
   const conversations = useAppStore((s) => s.conversations);
   const activeConversationId = useAppStore((s) => s.activeConversationId);
   const syncFromServer = useAppStore((s) => s.syncFromServer);
@@ -81,6 +85,8 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
   const [persistTurn, setPersistTurn] = useState(true);
   const [persistState, setPersistState] = useState("idle");
   const [persistConversationId, setPersistConversationId] = useState<string>("");
+  const [liveSttModels, setLiveSttModels] = useState<SttModelInfo[]>([]);
+  const [warmingUp, setWarmingUp] = useState(false);
   const transcriptRef = useRef("");
   const assistantTextRef = useRef("");
 
@@ -102,6 +108,31 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
       setPersistConversationId(activeConversationId.replace("db:", ""));
     }
   }, [activeConversationId, persistConversationId]);
+
+  useEffect(() => {
+    let aborted = false;
+    apiSttModels()
+      .then((payload) => {
+        if (aborted) return;
+        const models = (payload.models || []).filter((m) => m.supports_live);
+        setLiveSttModels(models);
+        const hasSelectedReady = models.find((m) => m.id === sttLiveModel && m.ready !== false);
+        if (!hasSelectedReady) {
+          const fallback = payload.default || models.find((m) => m.ready !== false)?.id || models[0]?.id;
+          if (fallback) {
+            setSttLiveModel(fallback);
+          }
+        }
+      })
+      .catch(() => {
+        if (aborted) return;
+        setLiveSttModels([]);
+      });
+
+    return () => {
+      aborted = true;
+    };
+  }, [setSttLiveModel, sttLiveModel]);
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -247,6 +278,12 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
       case "interrupted":
         await stopPlaybackNow();
         break;
+      case "warn":
+        if (evt.code === "stt_model_fallback" && evt.selected) {
+          setSttLiveModel(evt.selected);
+          setLastError(`Requested STT model is unavailable, using ${evt.selected}`);
+        }
+        break;
       case "error":
         setLastError(evt.message);
         break;
@@ -272,7 +309,7 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
     ws.onopen = () => {
       setStatus("connected");
       setLastError(null);
-      ws.send(JSON.stringify({ type: "start", model: voice }));
+      ws.send(JSON.stringify({ type: "start", model: voice, stt_model: sttLiveModel }));
     };
 
     ws.onclose = (ev) => {
@@ -407,6 +444,42 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
       </p>
 
       <div className="flex gap-2 flex-wrap">
+        <select
+          className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+          value={sttLiveModel}
+          onChange={(e) => setSttLiveModel(e.target.value)}
+          disabled={connected}
+        >
+          {liveSttModels.length === 0 ? (
+            <option value={sttLiveModel}>{sttLiveModel}</option>
+          ) : (
+            liveSttModels.map((m) => (
+              <option key={m.id} value={m.id} disabled={m.ready === false}>
+                {m.ready === false ? `${m.label} (not ready)` : m.label}
+              </option>
+            ))
+          )}
+        </select>
+        <button
+          className="px-4 py-2 rounded-xl bg-indigo-600 text-white disabled:opacity-50"
+          disabled={warmingUp || connected}
+          onClick={async () => {
+            setWarmingUp(true);
+            setLastError(null);
+            try {
+              await apiWarmupSttModel(sttLiveModel);
+              const payload = await apiSttModels();
+              const models = (payload.models || []).filter((m) => m.supports_live);
+              setLiveSttModels(models);
+            } catch (e: any) {
+              setLastError(e?.message || "Warmup failed");
+            } finally {
+              setWarmingUp(false);
+            }
+          }}
+        >
+          {warmingUp ? "Warming..." : "Warmup STT"}
+        </button>
         <button
           className="px-4 py-2 rounded-xl bg-slate-900 text-white disabled:opacity-50"
           onClick={connectWs}

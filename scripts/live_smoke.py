@@ -34,7 +34,14 @@ def to_pcm16_mono_16k(wav_path: Path) -> bytes:
     return pcm.tobytes()
 
 
-async def run_smoke(url: str, token: str | None, wav_path: Path, model: str, timeout_s: float) -> int:
+async def run_smoke(
+    url: str,
+    token: str | None,
+    wav_path: Path,
+    model: str,
+    stt_model: str | None,
+    timeout_s: float,
+) -> int:
     if token:
         join = "&" if "?" in url else "?"
         url = f"{url}{join}token={token}"
@@ -57,7 +64,10 @@ async def run_smoke(url: str, token: str | None, wav_path: Path, model: str, tim
         ready_raw = await asyncio.wait_for(ws.recv(), timeout=timeout_s)
         print("ready:", ready_raw)
 
-        await ws.send(json.dumps({"type": "start", "model": model}))
+        start_payload = {"type": "start", "model": model}
+        if stt_model:
+            start_payload["stt_model"] = stt_model
+        await ws.send(json.dumps(start_payload))
 
         for i in range(0, len(pcm), chunk_bytes):
             await ws.send(pcm[i : i + chunk_bytes])
@@ -130,6 +140,7 @@ def main() -> int:
     parser.add_argument("--token", default=None, help="Optional auth token")
     parser.add_argument("--wav", required=True, help="Path to short speech WAV/OGG/MP3 file")
     parser.add_argument("--model", default="female", choices=["female", "male"], help="TTS voice model")
+    parser.add_argument("--stt-model", default=None, help="Optional STT model id (example: local/wav2vec2-datasetstt)")
     parser.add_argument("--timeout", type=float, default=25.0, help="Timeout seconds")
     args = parser.parse_args()
 
@@ -138,7 +149,7 @@ def main() -> int:
         print(f"Input audio file does not exist: {wav_path}")
         return 2
 
-    return asyncio.run(run_smoke(args.url, args.token, wav_path, args.model, args.timeout))
+    return asyncio.run(run_smoke(args.url, args.token, wav_path, args.model, args.stt_model, args.timeout))
 
 
 if __name__ == "__main__":

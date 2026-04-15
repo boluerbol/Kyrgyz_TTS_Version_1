@@ -65,6 +65,12 @@ function App() {
     const currentConversationIdRef = useRef<string | undefined>(activeConversationId);
     const chatEndRef = useRef<HTMLDivElement | null>(null);
     const token = useAppStore((s) => s.token);
+
+    useEffect(() => {
+        setAuthedEmail(localStorage.getItem("ky_authed_email") || undefined);
+        setAuthedName(localStorage.getItem("ky_authed_name") || undefined);
+    }, [token]);
+
     const sharedProps = {
       // 1. Core Logic & State
     transcriber,
@@ -155,7 +161,11 @@ function App() {
     authedName,
     authedEmail,
     logout: () => {
+        localStorage.removeItem('ky_authed_email');
+        localStorage.removeItem('ky_authed_name');
         localStorage.removeItem('ky_token');
+        setAuthedEmail(undefined);
+        setAuthedName(undefined);
         setAuth(undefined);
     }
       // Add all the other props you currently have in 'protectedProps'

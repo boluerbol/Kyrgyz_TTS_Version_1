@@ -61,6 +61,9 @@ export function ProtectedApp({ children, sharedProps }: any) {
         open={sharedProps.mobileSidebarOpen} 
         setOpen={sharedProps.setMobileSidebarOpen}
         activeTab={sharedProps.tab}
+        authedName={sharedProps.authedName}
+        authedEmail={sharedProps.authedEmail}
+        logout={sharedProps.logout}
         setTab={sharedProps.setTab}
       />
       
