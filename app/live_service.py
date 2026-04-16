@@ -290,6 +290,13 @@ class LiveSession:
             )
             return
 
+        if msg_type == "browser_turn":
+            transcript = str(payload.get("text", "")).strip()
+            if not transcript:
+                return
+            await self._run_text_turn(transcript, trigger="browser_stt")
+            return
+
         if msg_type == "stop":
             await self.flush_buffer(trigger="stop")
             return
@@ -386,6 +393,14 @@ class LiveSession:
             self.logger.error("live turn failed", turn_id=turn_id, exc_info=exc)
             await self.websocket.send_json({"type": "error", "turn_id": turn_id, "message": str(exc)})
             await self.websocket.send_json({"type": "turn_done", "turn_id": turn_id})
+
+    async def _run_text_turn(self, transcript: str, *, trigger: str) -> None:
+        self._turn_id += 1
+        turn_id = self._turn_id
+        await self.websocket.send_json({"type": "turn_start", "turn_id": turn_id, "trigger": trigger})
+        await self.websocket.send_json({"type": "transcript", "turn_id": turn_id, "text": transcript})
+        await self._stream_llm_and_tts(turn_id, transcript)
+        await self.websocket.send_json({"type": "turn_done", "turn_id": turn_id})
 
     async def _transcribe_pcm(self, pcm: bytes) -> str:
         wav_bytes = self._pcm_to_wav_bytes(pcm, self.sample_rate)

@@ -61,7 +61,7 @@ export default function AppRoutes({ sharedProps }: any) {
       <Route path="/live" element={
         isAuthed ? (
           <ProtectedApp sharedProps={sharedProps}>
-            <LivePage setTab={sharedProps.setTab} />
+            <LivePage setTab={sharedProps.setTab} transcriber={sharedProps.transcriber} />
           </ProtectedApp>
         ) : <Navigate to="/login" />
       } />

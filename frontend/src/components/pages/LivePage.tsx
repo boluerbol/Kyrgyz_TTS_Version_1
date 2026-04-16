@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiSttModels, apiWarmupSttModel, type SttModelInfo } from "../../api/kyrgyzService";
+import type { Transcriber } from "../../hooks/useTranscriber";
 import { useAppStore } from "../../state/appStore";
 
 type LiveServerEvent =
@@ -52,7 +53,12 @@ type PlaybackChunk = {
   text?: string;
 };
 
-export default function LivePage({ setTab }: { setTab: (tab: string) => void }) {
+type LivePageProps = {
+  setTab: (tab: string) => void;
+  transcriber: Transcriber;
+};
+
+export default function LivePage({ setTab, transcriber }: LivePageProps) {
   const token = useAppStore((s) => s.token);
   const voice = useAppStore((s) => s.voice);
   const sttLiveModel = useAppStore((s) => s.sttLiveModel);
@@ -67,6 +73,13 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
   const captureSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const captureProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const playAudioCtxRef = useRef<AudioContext | null>(null);
+  const browserRecorderRef = useRef<MediaRecorder | null>(null);
+  const browserChunksRef = useRef<Blob[]>([]);
+  const browserPendingSendRef = useRef(false);
+  const browserTranscribeTimeoutRef = useRef<number | null>(null);
+  const connectPromiseRef = useRef<Promise<void> | null>(null);
+  const connectResolveRef = useRef<(() => void) | null>(null);
+  const connectRejectRef = useRef<((err?: unknown) => void) | null>(null);
 
   const queueRef = useRef<PlaybackChunk[]>([]);
   const pendingMetaRef = useRef<Array<{ seq?: number; text?: string }>>([]);
@@ -87,6 +100,7 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
   const [persistConversationId, setPersistConversationId] = useState<string>("");
   const [liveSttModels, setLiveSttModels] = useState<SttModelInfo[]>([]);
   const [warmingUp, setWarmingUp] = useState(false);
+  const [browserTranscribing, setBrowserTranscribing] = useState(false);
   const transcriptRef = useRef("");
   const assistantTextRef = useRef("");
 
@@ -114,7 +128,10 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
     apiSttModels()
       .then((payload) => {
         if (aborted) return;
-        const models = (payload.models || []).filter((m) => m.supports_live);
+        const models = [
+          ...(payload.models || []).filter((m) => m.supports_live),
+          ...(payload.browser_models || []).filter((m) => m.supports_browser),
+        ];
         setLiveSttModels(models);
         const hasSelectedReady = models.find((m) => m.id === sttLiveModel && m.ready !== false);
         if (!hasSelectedReady) {
@@ -142,7 +159,51 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
     assistantTextRef.current = assistantText;
   }, [assistantText]);
 
+  useEffect(() => {
+    const pending = browserPendingSendRef.current;
+    const text = (transcriber.output?.text || "").trim();
+    if (!pending || !text) return;
+    if (browserTranscribeTimeoutRef.current) {
+      window.clearTimeout(browserTranscribeTimeoutRef.current);
+      browserTranscribeTimeoutRef.current = null;
+    }
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setLastError("Live WebSocket is not connected");
+      browserPendingSendRef.current = false;
+      setBrowserTranscribing(false);
+      return;
+    }
+    browserPendingSendRef.current = false;
+    setBrowserTranscribing(false);
+    ws.send(JSON.stringify({ type: "browser_turn", text }));
+  }, [transcriber.output?.text]);
+
+  useEffect(() => {
+    if (!browserPendingSendRef.current) return;
+    if (transcriber.isBusy) return;
+    if ((transcriber.output?.text || "").trim()) return;
+    browserPendingSendRef.current = false;
+    setBrowserTranscribing(false);
+    if (browserTranscribeTimeoutRef.current) {
+      window.clearTimeout(browserTranscribeTimeoutRef.current);
+      browserTranscribeTimeoutRef.current = null;
+    }
+    setLastError("Browser STT returned no text");
+  }, [transcriber.isBusy, transcriber.output?.text]);
+
   const connected = useMemo(() => status === "connected", [status]);
+  const selectedLiveModel = useMemo(
+    () => liveSttModels.find((m) => m.id === sttLiveModel),
+    [liveSttModels, sttLiveModel],
+  );
+  const browserMode = !!selectedLiveModel?.supports_browser;
+
+  useEffect(() => {
+    if (browserMode && selectedLiveModel?.id) {
+      transcriber.setModel(selectedLiveModel.id);
+    }
+  }, [browserMode, selectedLiveModel?.id, transcriber]);
 
   const clearPlaybackQueue = () => {
     queueRef.current = [];
@@ -173,6 +234,14 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
       await captureAudioCtxRef.current.close();
     }
     captureAudioCtxRef.current = null;
+  };
+
+  const stopBrowserRecorder = () => {
+    const recorder = browserRecorderRef.current;
+    browserRecorderRef.current = null;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
   };
 
   const playNext = async () => {
@@ -292,10 +361,34 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
     }
   };
 
-  const connectWs = () => {
+  const connectWs = async () => {
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
-      return;
+      return connectPromiseRef.current || Promise.resolve();
     }
+
+    if (connectPromiseRef.current) {
+      return connectPromiseRef.current;
+    }
+
+    let settled = false;
+    connectPromiseRef.current = new Promise<void>((resolve, reject) => {
+      connectResolveRef.current = () => {
+        if (settled) return;
+        settled = true;
+        connectPromiseRef.current = null;
+        connectResolveRef.current = null;
+        connectRejectRef.current = null;
+        resolve();
+      };
+      connectRejectRef.current = (err?: unknown) => {
+        if (settled) return;
+        settled = true;
+        connectPromiseRef.current = null;
+        connectResolveRef.current = null;
+        connectRejectRef.current = null;
+        reject(err);
+      };
+    });
 
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     const host = window.location.port === "5173" ? "127.0.0.1:8000" : window.location.host;
@@ -309,7 +402,12 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
     ws.onopen = () => {
       setStatus("connected");
       setLastError(null);
-      ws.send(JSON.stringify({ type: "start", model: voice, stt_model: sttLiveModel }));
+      connectResolveRef.current?.();
+      ws.send(JSON.stringify({
+        type: "start",
+        model: voice,
+        ...(browserMode ? {} : { stt_model: sttLiveModel }),
+      }));
     };
 
     ws.onclose = (ev) => {
@@ -318,11 +416,15 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
         setLastError(`Live WS closed (code ${ev.code})`);
       }
       wsRef.current = null;
+      if (status !== "connected") {
+        connectRejectRef.current?.(new Error("Live WebSocket closed before opening"));
+      }
     };
 
     ws.onerror = () => {
       setStatus("error");
       setLastError("Live WebSocket error");
+      connectRejectRef.current?.(new Error("Live WebSocket error"));
     };
 
     ws.onmessage = (msg) => {
@@ -366,7 +468,14 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
 
   const startRecording = async () => {
     if (recording) return;
-    if (!connected) connectWs();
+    if (!connected) {
+      try {
+        await connectWs();
+      } catch (err) {
+        setLastError(err instanceof Error ? err.message : "Live WebSocket connect failed");
+        return;
+      }
+    }
 
     if (!streamRef.current) {
       streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -374,6 +483,53 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
 
     sendInterrupt();
     await stopPlaybackNow();
+
+    if (browserMode) {
+      try {
+        await stopCapturePipeline();
+        stopBrowserRecorder();
+        browserChunksRef.current = [];
+        transcriber.onInputChange();
+
+        const recorder = new MediaRecorder(streamRef.current);
+        browserRecorderRef.current = recorder;
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            browserChunksRef.current.push(event.data);
+          }
+        };
+        recorder.onstop = async () => {
+          try {
+            const blob = new Blob(browserChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+            browserChunksRef.current = [];
+            const audioCtx = new AudioContext({ latencyHint: "interactive" });
+            const audioBuffer = await audioCtx.decodeAudioData(await blob.arrayBuffer());
+            await audioCtx.close();
+            browserPendingSendRef.current = true;
+            setBrowserTranscribing(true);
+            if (browserTranscribeTimeoutRef.current) {
+              window.clearTimeout(browserTranscribeTimeoutRef.current);
+            }
+            browserTranscribeTimeoutRef.current = window.setTimeout(() => {
+              browserPendingSendRef.current = false;
+              setBrowserTranscribing(false);
+              setLastError("Browser STT timed out");
+            }, 30000);
+            transcriber.start(audioBuffer);
+          } catch {
+            browserPendingSendRef.current = false;
+            setBrowserTranscribing(false);
+            setLastError("Browser STT failed");
+          }
+        };
+        recorder.start();
+        setRecording(true);
+        return;
+      } catch {
+        setLastError("Browser recording init failed");
+        return;
+      }
+    }
 
     try {
       await stopCapturePipeline();
@@ -411,7 +567,17 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
 
   const stopRecording = () => {
     void (async () => {
-      await stopCapturePipeline();
+      if (browserMode) {
+        stopBrowserRecorder();
+      } else {
+        await stopCapturePipeline();
+      }
+      if (browserTranscribeTimeoutRef.current) {
+        window.clearTimeout(browserTranscribeTimeoutRef.current);
+        browserTranscribeTimeoutRef.current = null;
+      }
+      browserPendingSendRef.current = false;
+      setBrowserTranscribing(false);
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "stop" }));
@@ -429,6 +595,10 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
       stopRecording();
       void disconnectWs();
       void stopCapturePipeline();
+      if (browserTranscribeTimeoutRef.current) {
+        window.clearTimeout(browserTranscribeTimeoutRef.current);
+        browserTranscribeTimeoutRef.current = null;
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
@@ -440,7 +610,7 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
       <div className="p-6 max-w-4xl mx-auto space-y-4">
       <h2 className="text-2xl font-bold dark:text-white">Live Mode</h2>
       <p className="text-sm text-slate-500 dark:text-slate-300">
-        Real-time voice loop: microphone PCM {'->'} server STT {'->'} Groq stream {'->'} sentence TTS {'->'} streamed audio playback.
+        Real-time voice loop: microphone {'->'} {browserMode ? "browser STT" : "server STT"} {'->'} assistant stream {'->'} sentence TTS {'->'} streamed audio playback.
       </p>
 
       <div className="flex gap-2 flex-wrap">
@@ -455,21 +625,28 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
           ) : (
             liveSttModels.map((m) => (
               <option key={m.id} value={m.id} disabled={m.ready === false}>
-                {m.ready === false ? `${m.label} (not ready)` : m.label}
+                {m.ready === false
+                  ? `${m.label} (not ready)`
+                  : m.supports_browser
+                    ? `${m.label} (local browser)`
+                    : m.label}
               </option>
             ))
           )}
         </select>
         <button
           className="px-4 py-2 rounded-xl bg-indigo-600 text-white disabled:opacity-50"
-          disabled={warmingUp || connected}
+          disabled={warmingUp || connected || browserMode}
           onClick={async () => {
             setWarmingUp(true);
             setLastError(null);
             try {
               await apiWarmupSttModel(sttLiveModel);
               const payload = await apiSttModels();
-              const models = (payload.models || []).filter((m) => m.supports_live);
+              const models = [
+                ...(payload.models || []).filter((m) => m.supports_live),
+                ...(payload.browser_models || []).filter((m) => m.supports_browser),
+              ];
               setLiveSttModels(models);
             } catch (e: any) {
               setLastError(e?.message || "Warmup failed");
@@ -478,7 +655,7 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
             }
           }}
         >
-          {warmingUp ? "Warming..." : "Warmup STT"}
+          {browserMode ? "Browser STT" : warmingUp ? "Warming..." : "Warmup STT"}
         </button>
         <button
           className="px-4 py-2 rounded-xl bg-slate-900 text-white disabled:opacity-50"
@@ -499,7 +676,7 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
           onClick={() => void startRecording()}
           disabled={!connected || recording}
         >
-          Start Talking
+          {browserMode ? "Record + Transcribe" : "Start Talking"}
         </button>
         <button
           className="px-4 py-2 rounded-xl bg-rose-600 text-white disabled:opacity-50"
@@ -529,6 +706,7 @@ export default function LivePage({ setTab }: { setTab: (tab: string) => void }) 
           <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">Playing chunk: {currentChunkLabel}</div>
           <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">Sent PCM chunks: {sentPcmChunks}</div>
           <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">Decode failures: {decodeFailures}</div>
+          {browserTranscribing && <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">Browser STT: transcribing...</div>}
           {lastError && <div className="text-sm text-rose-500 mt-2">{lastError}</div>}
         </div>
 
